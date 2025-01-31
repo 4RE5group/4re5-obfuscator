@@ -11,6 +11,7 @@ class ARES_OBFUSCATOR
 {
     static Random random = new Random();
     static Dictionary<string, string> nameMap = new Dictionary<string, string>();
+    static Dictionary<string, string> classesAndNamespaces = new Dictionary<string, string>();
     static bool base64Strings = false;
     
     static void Main(string[] args)
@@ -64,6 +65,12 @@ class ARES_OBFUSCATOR
                 code = code.Replace(entry.Key+"(", entry.Value+"(");
             }
 
+            // replace classes and namespaces
+            foreach (var entry in classesAndNamespaces)
+            {
+                code = code.Replace(entry.Key+".", entry.Value+".");
+            }
+
             File.WriteAllText(Path.Combine(outputPath, Path.GetFileName(file)), code);
         }
 
@@ -92,8 +99,7 @@ class ARES_OBFUSCATOR
 
             foreach (var line in lines) // don't obfuscate external functions ==> otherwise won't work
             {
-                if (line.Line.Contains("DllImport") || line.Line.Contains("extern"))
-                {
+                if (line.Line.Contains("DllImport") || line.Line.Contains("extern")) {
                     return match.Value; // is external
                 }
             }
@@ -103,7 +109,15 @@ class ARES_OBFUSCATOR
                 return match.Value;
             }
 
-            if (!nameMap.ContainsKey(originalName)) // check if already obfuscated
+            if(match.Value.Contains("class") || match.Value.Contains("namespace")) { // add to namespaces to after replace every class calls like "Class1.MyFunc" 
+                            if(classesAndNamespaces.ContainsKey(originalName)) {
+                    return match.Value.Replace(originalName, classesAndNamespaces[originalName]);
+                }
+                classesAndNamespaces[originalName] = GenerateRandomName();
+                nameMap[originalName] = classesAndNamespaces[originalName];
+            }
+
+            if (!nameMap.ContainsKey(originalName) && !classesAndNamespaces.ContainsKey(originalName)) // check if already obfuscated
                 nameMap[originalName] = GenerateRandomName(); // generate new name
 
             return match.Value.Replace(originalName, nameMap[originalName]);
@@ -115,7 +129,7 @@ class ARES_OBFUSCATOR
             string pattern2 = @"@?""(.*?)""";
             
             code = Regex.Replace(code, pattern2, match => {
-                var lines = code.Split('\n').Select((line, index) => new { Line = line, Number = index + 1 }).Where(l => l.Line.Contains('"'+match.Value+'"'));
+                var lines = code.Split('\n').Select((line, index) => new { Line = line, Number = index + 1 }).Where(l => l.Line.Contains('('+match.Value));
                 foreach (var line in lines)
                 {
                     if (line.Line.Contains("DllImport") || line.Line.Contains("extern"))
