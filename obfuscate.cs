@@ -83,14 +83,14 @@ class ARES_OBFUSCATOR
             code = "using System.Text;\n" + code;
 
 
-        // Match namespaces, classes, methods, and variables
+        // Match namespaces, classes, methods
         string pattern = @"(?<![\w])(?:namespace|class|IntPtr|uint|void|int|string|double|float|bool|char|long|short|byte|decimal)\s+(\w+)(?=\s*[{(])";
         
         code = Regex.Replace(code, pattern, match => {
             string originalName = match.Groups[1].Value;
             var lines = code.Split('\n').Select((line, index) => new { Line = line, Number = index + 1 }).Where(l => l.Line.Contains(match.Value+"("));
 
-            foreach (var line in lines)
+            foreach (var line in lines) // don't obfuscate external functions ==> otherwise won't work
             {
                 if (line.Line.Contains("DllImport") || line.Line.Contains("extern"))
                 {
@@ -99,12 +99,12 @@ class ARES_OBFUSCATOR
             }
 
             Console.WriteLine("Obfuscating: " + originalName + ", "+ match.Value);
-            if(match.Value == "void Main" || match.Value == "class Program") { // pass _start
+            if(match.Value == "void Main" || match.Value == "class Program") { // pass _start function
                 return match.Value;
             }
 
-            if (!nameMap.ContainsKey(originalName))
-                nameMap[originalName] = GenerateRandomName();
+            if (!nameMap.ContainsKey(originalName)) // check if already obfuscated
+                nameMap[originalName] = GenerateRandomName(); // generate new name
 
             return match.Value.Replace(originalName, nameMap[originalName]);
         });
@@ -113,7 +113,18 @@ class ARES_OBFUSCATOR
         // replace strings with base64
         if(base64Strings) {
             string pattern2 = @"@?""(.*?)""";
+            
             code = Regex.Replace(code, pattern2, match => {
+                var lines = code.Split('\n').Select((line, index) => new { Line = line, Number = index + 1 }).Where(l => l.Line.Contains('"'+match.Value+'"'));
+                foreach (var line in lines)
+                {
+                    if (line.Line.Contains("DllImport") || line.Line.Contains("extern"))
+                    {
+                        return match.Value; // is external
+                    }
+                }
+
+
                 string originalText = match.Groups[1].Value;
                 Console.WriteLine("     => BASE64 >> '"+originalText+"'");
                 string base64Text = Convert.ToBase64String(Encoding.UTF8.GetBytes(originalText));
