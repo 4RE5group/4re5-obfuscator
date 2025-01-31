@@ -25,7 +25,11 @@ class ARES_OBFUSCATOR
         }
         // enable base64 encoding
         if(args.Length == 2) {
-            base64Strings = bool.Parse(args[1]);
+            try {
+                base64Strings = bool.Parse(args[1]);
+            } catch {
+                Console.WriteLine("Invalid argument for base64 encoding. Using default value: false");
+            }
         }
 
 
@@ -34,7 +38,16 @@ class ARES_OBFUSCATOR
         string directoryPath = args[0]; // Change this path
         string outputPath = "Obfuscated";
 
-        Directory.Delete(outputPath, true);
+        if(!Directory.Exists(directoryPath)) {
+            Console.WriteLine("Source directory does not exist.");
+            return;
+        }
+
+        if(Directory.Exists(outputPath)) {
+            Console.WriteLine("CLEARING......");
+            Directory.Delete(outputPath, true); 
+        }
+        
         Directory.CreateDirectory(outputPath);
 
         string[] files = Directory.GetFiles(directoryPath, "*.cs", SearchOption.AllDirectories);
@@ -43,24 +56,48 @@ class ARES_OBFUSCATOR
         {
             string code = File.ReadAllText(file);
             code = ObfuscateCode(code);
-            File.WriteAllText(Path.Combine(outputPath, Path.GetFileName(file)), code);
             Console.WriteLine("Obfuscated: "+file);
+
+            // replace function calls
+            foreach (var entry in nameMap)
+            {
+                code = code.Replace(entry.Key+"(", entry.Value+"(");
+            }
+
+            File.WriteAllText(Path.Combine(outputPath, Path.GetFileName(file)), code);
         }
+
         Console.WriteLine("\nObfuscation complete.");
     }
 
     static string ObfuscateCode(string code)
     {
+         // replace function calls
+        foreach (var entry in nameMap)
+        {
+            code = code.Replace(entry.Key+"(", entry.Value+"(");
+        }
+
         // add usednamespaces
         if(!code.Contains("using System.Text;"))  // System.Text is used for base64 encoding
             code = "using System.Text;\n" + code;
 
 
         // Match namespaces, classes, methods, and variables
-        string pattern = @"(?<![\w])(?:namespace|class|void|int|string|double|float|bool|char|long|short|byte|decimal)\s+(\w+)(?=\s*[{(])";
+        string pattern = @"(?<![\w])(?:namespace|class|IntPtr|uint|void|int|string|double|float|bool|char|long|short|byte|decimal)\s+(\w+)(?=\s*[{(])";
         
         code = Regex.Replace(code, pattern, match => {
             string originalName = match.Groups[1].Value;
+            var lines = code.Split('\n').Select((line, index) => new { Line = line, Number = index + 1 }).Where(l => l.Line.Contains(match.Value+"("));
+
+            foreach (var line in lines)
+            {
+                if (line.Line.Contains("DllImport") || line.Line.Contains("extern"))
+                {
+                    return match.Value; // is external
+                }
+            }
+
             Console.WriteLine("Obfuscating: " + originalName + ", "+ match.Value);
             if(match.Value == "void Main" || match.Value == "class Program") { // pass _start
                 return match.Value;
@@ -73,16 +110,9 @@ class ARES_OBFUSCATOR
         });
 
 
-        // replace function calls
-        foreach (var entry in nameMap)
-        {
-            code = code.Replace(entry.Key+"(", entry.Value+"(");
-        }
-
-
         // replace strings with base64
         if(base64Strings) {
-            string pattern2 = "\"(.*?)\"";
+            string pattern2 = @"@?""(.*?)""";
             code = Regex.Replace(code, pattern2, match => {
                 string originalText = match.Groups[1].Value;
                 Console.WriteLine("     => BASE64 >> '"+originalText+"'");
