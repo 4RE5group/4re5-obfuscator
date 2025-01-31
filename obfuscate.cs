@@ -62,7 +62,7 @@ class ARES_OBFUSCATOR
             // replace function calls
             foreach (var entry in nameMap)
             {
-                code = code.Replace(entry.Key+"(", entry.Value+"(");
+                code = code.Replace(entry.Key, entry.Value);
             }
 
             // replace classes and namespaces
